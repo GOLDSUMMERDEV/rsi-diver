@@ -1,0 +1,97 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © seba34e
+
+//@version=5
+indicator("Divergence RSI V2", overlay = false, max_labels_count=300, max_lines_count=500, max_bars_back=100)
+
+//SQ Inputs
+length = 20
+
+//SQ functions
+bband(length, mult) =>
+	ta.sma(close, length) + mult * ta.stdev(close, length)
+keltner(length, mult) =>
+	ta.ema(close, length) + mult * ta.ema(ta.tr, length)
+	
+//SQ calculations
+e1 = (ta.highest(high, length) + ta.lowest(low, length)) / 2 + ta.sma(close, length)
+osc = ta.linreg(close - e1 / 2, length, 0)
+diff = bband(length, 2) - keltner(length, 1)
+
+squeezeDn = osc[1] > osc [0] 
+squeezeUp = osc[1] < osc [0]
+
+//************************************************
+
+backTesting = input.int (1000, title = "Backtesting Bars", minval=1, maxval=1000)
+tolerance   = input.int(2, title='Tolerance', minval=0, maxval=3)
+minBarsDivergence = input.int(30, title="Min Bars to Detect")
+maxbars     = input.int(100, title="Max Bars to Detect", minval=0, maxval=100)
+closeOrHigh = input.source(close, title='Source Highs')
+closeOrLow  = input.source(close, title='Source Lows')
+useSqueeze  = input.bool(true, title='Use Squeze Parameter')
+
+
+valueInLine (x, x1, y1, x2, y2) =>
+    ((y1-y2)/(x1-x2)) * (x-x1) + y1
+
+
+fun_line_slope(x1,y1,x2,y2) => 
+    (y2 - y1) / (x2 - x1)
+    
+fun_slope_angle(slope) =>
+    x_axis_slope=0.5
+    angle_radians = math.atan((slope-x_axis_slope)/(1+(slope*x_axis_slope)))
+    pi_number = 3.1415926535897
+    angle_degrees = (angle_radians * 180) / pi_number
+    angle_degrees
+
+miRSIHigh = ta.rsi (close, 14)
+miRSILow  = ta.rsi (close, 14)
+cantDivergenciasUp = 0
+cantDivergenciasDn = 0
+
+l1 = hline(70, color=color.white, linestyle=hline.style_dashed)
+l2 = hline(30, color=color.white, linestyle=hline.style_dashed)
+fill(l1, l2, color=color.new(color.purple, 90))
+plot(miRSIHigh, color=color.new(color.purple, 0))
+
+bgcolor (bar_index == last_bar_index - backTesting  ? color.blue : na)
+
+if bar_index >= last_bar_index - backTesting
+
+    for a = maxbars to 1
+                //searching highs
+        if closeOrHigh[a] < closeOrHigh [0] and a > minBarsDivergence
+            contActivoPuntos = 0
+            contRSIPuntos = 0
+            for b=0 to a
+                g = valueInLine (bar_index[b],bar_index[a],closeOrHigh[a],bar_index[0], closeOrHigh[0])
+                h = valueInLine (bar_index[b],bar_index[a],miRSIHigh[a],bar_index[0], miRSIHigh[0])
+                if g < closeOrHigh [b]
+                    contActivoPuntos := contActivoPuntos + 1 
+                if h < miRSIHigh [b] 
+                    contRSIPuntos := contRSIPuntos + 1 
+    
+            if useSqueeze ? contActivoPuntos <= tolerance and contRSIPuntos <= tolerance and miRSIHigh [0] < miRSIHigh [a] and squeezeDn : contActivoPuntos <= tolerance and contRSIPuntos <= tolerance and miRSIHigh [0] < miRSIHigh [a]
+                cantDivergenciasUp := cantDivergenciasUp + 1 
+                linea1 = line.new (bar_index[a],miRSIHigh[a],bar_index[0], miRSIHigh [0] , color=color.red)
+                lb1 = label.new(bar_index[0], miRSIHigh [0], text= str.tostring(cantDivergenciasUp, "0"), textcolor=color.white, color=color.red, style=label.style_label_down) 
+        // buscando lows
+        if closeOrLow [a] > closeOrLow [0] and a > minBarsDivergence 
+            contActivoPuntos = 0
+            contRSIPuntos = 0
+            for b=0 to a
+                g = valueInLine (bar_index[b], bar_index[a], closeOrLow[a], bar_index[0], closeOrLow[0])
+                h = valueInLine (bar_index[b], bar_index[a], miRSILow[a]  , bar_index[0], miRSILow[0]) 
+                if g > closeOrLow [b]
+                    contActivoPuntos := contActivoPuntos + 1 
+                if h > miRSILow [b]
+                    contRSIPuntos:=contRSIPuntos + 1 
+    
+            if useSqueeze ? contActivoPuntos <= tolerance and contRSIPuntos <= tolerance and miRSILow [0] > miRSILow [a] and squeezeUp : contActivoPuntos <= tolerance and contRSIPuntos <= tolerance and miRSILow [0] > miRSILow [a] 
+                cantDivergenciasDn := cantDivergenciasDn + 1
+                linea2 = line.new(bar_index[a],miRSILow[a],bar_index[0], miRSILow[0] , color=color.green)
+                lb2 = label.new(bar_index[0], miRSILow[0], text= str.tostring(cantDivergenciasDn, "0"), textcolor=color.white, color=color.green, style=label.style_label_up)
+
+
